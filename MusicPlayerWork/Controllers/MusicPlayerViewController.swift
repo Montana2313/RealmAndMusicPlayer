@@ -20,6 +20,7 @@ class MusicPlayerViewController: UIViewController {
     private var collectionView : UICollectionView!
     private var collectionViewFlowLayout : UICollectionViewFlowLayout!
     override func viewDidLoad() {
+     //   
         super.viewDidLoad()
         self.view.backgroundColor = .white
         self.setCollectionView()

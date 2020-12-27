@@ -9,6 +9,7 @@ target 'MusicPlayerWork' do
   pod 'RealmSwift' 
   pod 'RxSwift'
   pod 'RxCocoa'
+  pod 'SDWebImage', '~> 5.0'
 
 
   # Pods for MusicPlayerWork

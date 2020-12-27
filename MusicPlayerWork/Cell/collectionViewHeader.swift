@@ -11,6 +11,8 @@ import UIKit
 import RxSwift
 import RealmSwift
 import AVFoundation
+import MediaPlayer
+import SDWebImage
 
 
 
@@ -54,7 +56,7 @@ class collectionViewHeaderSection: UICollectionReusableView {
         self.setUsernameLabel()
         self.setEmailAddress()
         self.setQuitButton()
-       // self.setSearchButton()
+        self.setSearchButton()
         self.setPlayer()
         self.setBackGroundMusic()
         self.setStartButton()
@@ -69,9 +71,10 @@ class collectionViewHeaderSection: UICollectionReusableView {
         
         self.musicPlayerViewModel.getCurrentUserInformation()
         
+         self.setupRemoteTransportControls()
+        
         
         NotificationCenter.default.addObserver(self, selector: #selector(self.songChanged(_:)), name: NSNotification.Name(rawValue: "songChanged"), object: nil)
-
     }
     @objc func songChanged(_ notification: NSNotification) {
         if let number = notification.userInfo?["songNumber"] as? Int {
@@ -86,6 +89,7 @@ class collectionViewHeaderSection: UICollectionReusableView {
             self.backGroundPlayer.play()
             self.startButton.setTitle("Dur", for: .normal)
              self.songTitle.text = "Bölüm \(self.currentSongValue + 1)"
+            
         }
     }
     private func setImageView(){
@@ -279,10 +283,13 @@ class collectionViewHeaderSection: UICollectionReusableView {
         
         let myTimes = String(myMins) + ":" + String(mySecs);
         print("Time : \(myTimes)")
-                
+        
+        
         //subroutine used to keep track of current location of time in audio file
        player!.addPeriodicTimeObserver(forInterval: CMTimeMakeWithSeconds(1, preferredTimescale: 1), queue: DispatchQueue.main) { (CMTime) -> Void in
            if self.player!.currentItem?.status == .readyToPlay {
+            self.setupNowPlaying()
+            self.player.play()
                let time : Float64 = CMTimeGetSeconds(self.player!.currentTime());
                let currentSec = Int(time) % 60
                let currentMin = Int(time / 60)
@@ -333,7 +340,7 @@ class collectionViewHeaderSection: UICollectionReusableView {
         self.backGroundSoundSlider.maximumValue = 1.0
         self.backGroundSoundSlider.value = self.backGroundPlayer.volume
         
-        self.backGroundSoundSlider.addTarget(self, action: #selector(sliderChanged(slider:)), for: .valueChanged)
+        backGroundSoundSlider.addTarget(self, action: #selector(onSliderValChanged(slider:event:)), for: .valueChanged)
         self.imageView.addSubview(self.backGroundSoundSlider)
              
         self.backGroundSoundSlider.translatesAutoresizingMaskIntoConstraints = false
@@ -341,8 +348,19 @@ class collectionViewHeaderSection: UICollectionReusableView {
         self.backGroundSoundSlider.bottomAnchor.constraint(equalTo: self.imageView.bottomAnchor, constant: -10).isActive = true
         self.backGroundSoundSlider.rightAnchor.constraint(equalTo: self.imageView.rightAnchor, constant: -20).isActive = true
     }
-    @objc func sliderChanged(slider : UISlider){
-        self.backGroundPlayer.volume = slider.value
+    @objc func onSliderValChanged(slider: UISlider, event: UIEvent) {
+        if let touchEvent = event.allTouches?.first {
+            switch touchEvent.phase {
+            case .began:
+                print("başlandı")
+            case .moved:
+                self.backGroundPlayer.volume = slider.value
+            case .ended:
+                print("bitti")
+            default:
+                break
+            }
+        }
     }
     
     
@@ -413,4 +431,78 @@ class collectionViewHeaderSection: UICollectionReusableView {
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
+    func setupRemoteTransportControls() {
+           // Get the shared MPRemoteCommandCenter
+           let commandCenter = MPRemoteCommandCenter.shared()
+
+           // Add handler for Play Command
+           commandCenter.playCommand.addTarget { [unowned self] event in
+               if self.player!.rate == 0.0 {
+                   self.player!.play()
+                   return .success
+               }
+               return .commandFailed
+           }
+        commandCenter.nextTrackCommand.addTarget{ [unowned self] event in
+            self.nextButtonTapped()
+            return .success
+        }
+        commandCenter.previousTrackCommand.addTarget{ [unowned self] event in
+            self.backButtonTapped()
+            return .success
+        }
+
+           // Add handler for Pause Command
+           commandCenter.pauseCommand.addTarget { [unowned self] event in
+            if self.player!.rate == 0.0 {
+                self.player!.pause()
+                return .success
+            }
+            return .commandFailed
+           }
+        
+        commandCenter.changePlaybackPositionCommand.addTarget { [unowned self] event in
+            if let player = self.player{
+                let playerRate = player.rate
+                if let event = event as? MPChangePlaybackPositionCommandEvent{
+                    player.seek(to: CMTime(seconds: event.positionTime, preferredTimescale: CMTimeScale(1000)), completionHandler: { [weak self](success) in
+                                      guard let self = self else {return}
+                                      if success {
+                                          self.player?.rate = playerRate
+                                      }
+                                  })
+                }
+            }
+            return .success
+        }
+
+       }
+       func setupNowPlaying() {
+           // Define Now Playing Info
+           var nowPlayingInfo = [String : Any]()
+        nowPlayingInfo[MPMediaItemPropertyTitle] = "Bölüm \(self.currentSongValue)"
+
+           if let image = UIImage(named: "AppIcon") {
+               nowPlayingInfo[MPMediaItemPropertyArtwork] =
+                   MPMediaItemArtwork(boundsSize: image.size) { size in
+                       return image
+               }
+           }
+        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = self.player.currentItem?.currentTime().seconds
+           nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = self.player.currentItem?.asset.duration.seconds
+           nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = self.player?.rate
+        nowPlayingInfo[MPMediaItemPropertyAlbumTitle] = "Armut dalda kız balkonda"
+        nowPlayingInfo[MPMediaItemPropertyAlbumArtist] = "Özgür Elmaslı"
+        let fakeImageView = UIImageView(frame: CGRect(x: 0, y: 0, width: 300, height: 300))
+        fakeImageView.sd_setImage(with: URL(string: "https://img-s1.onedio.com/id-5775a2cbba077b60546373f6/rev-0/w-635/f-jpg-webp/s-c2ff533f21ff70f8753e5efb402228599d5e5049.webp")) { (image, err, type, url) in
+            nowPlayingInfo[MPMediaItemPropertyArtwork] =
+                MPMediaItemArtwork(boundsSize: CGSize(width: 300, height: 300)) { size in
+                    return image ?? UIImage()
+            }
+        }
+        
+
+           // Set the metadata
+           MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+       }
 }
